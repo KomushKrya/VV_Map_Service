@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  map-service:
+    build: .
+    container_name: map-microservice
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Nginx для демо-страницы
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: map-demo
+    ports:
+      - "8080:80"
+    depends_on:
+      - map-service
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
