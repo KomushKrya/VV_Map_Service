@@ -1,12 +1,11 @@
 # app/services/mock_gateway.py
 
-# Имитация таблицы кластеров (теперь адрес и координаты живут тут)
 MOCK_CLUSTERS_DB = {
     1: {
         "id": 1,
         "name": "Площадь Юности",
         "address": "Зеленоград, площадь Юности 2 ст1",
-        "latitude": None,  # Сначала координат нет, они заполнятся через геокодер
+        "latitude": None,
         "longitude": None
     },
     2: {
@@ -24,7 +23,6 @@ MOCK_FRANCHISES_DB = {
     3: "Бургер Кинг"
 }
 
-# Имитация таблицы предприятий (чистая связь)
 MOCK_ENTERPRISES_DB = [
     {"id": 1, "name": "Rostics на Юности", "franchise_id": 2, "cluster_id": 1},
     {"id": 2, "name": "ВиТ Иридиум", "franchise_id": 1, "cluster_id": 2},

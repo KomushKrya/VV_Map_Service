@@ -2,13 +2,18 @@ version: '3.8'
 
 services:
   map-service:
-    build: .
+    build:
+      context: .
+      network: host
     container_name: map-microservice
     ports:
-      - "8000:8000"
+      - "8002:8000"
     env_file:
       - .env
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - app-network
 
@@ -17,12 +22,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.nginx
+      network: host
     container_name: map-demo
     ports:
       - "8080:80"
     depends_on:
       - map-service
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - app-network
 

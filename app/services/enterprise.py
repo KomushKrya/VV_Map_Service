@@ -15,8 +15,6 @@ async def get_all_enterprises(with_coordinates: bool = True) -> List[Dict]:
     raw_data = await get_map_data_from_gateway()
     enterprises = []
 
-    # Локальный кэш для предотвращения повторного геокодирования одного и того же кластера
-    # в рамках одного тяжелого запроса
     geocoded_clusters_cache = {}
 
     for item in raw_data:
@@ -24,35 +22,28 @@ async def get_all_enterprises(with_coordinates: bool = True) -> List[Dict]:
         lat = item.get("cluster_latitude")
         lon = item.get("cluster_longitude")
 
-        # 1. Если координат в БД нет, проверяем кэш или геокодируем
         if lat is None or lon is None:
             if cluster_id in geocoded_clusters_cache:
                 lat, lon = geocoded_clusters_cache[cluster_id]
             else:
                 try:
-                    # Геокодируем по адресу кластера
                     geo_lat, geo_lon, _ = await geocode_address(item["cluster_address"])
                     if geo_lat is not None:
                         print(f"!!! ГЕОКОДЕР СРАБОТАЛ для кластера {item['cluster_name']} -> {geo_lat}, {geo_lon}")
 
-                        # Сохраняем в центральную БД через новый POST-эндпоинт
                         await save_cluster_coordinates_to_gateway(cluster_id, geo_lat, geo_lon)
 
-                        # Запоминаем в кэш текущего цикла
                         geocoded_clusters_cache[cluster_id] = (geo_lat, geo_lon)
                         lat, lon = geo_lat, geo_lon
                 except Exception as e:
                     print(f"Ошибка геокодирования для кластера {cluster_id}: {e}")
                     lat, lon = None, None
 
-        # Если координаты получить так и не удалось, а они обязательны — пропускаем заведение
         if with_coordinates and (lat is None or lon is None):
             continue
 
-        # 2. Маппинг под старую схему, чтобы фронтенд и карта не сломались
         enterprise = {
             "id": item["id"],
-            # Формируем красивое название заведения, например: "ROSTIC'S ТЦ Иридиум"
             "name": f"{item['franchise_name']} {item['cluster_name']}",
             "franchise_id": item["franchise_id"],
             "franchise_name": item["franchise_name"],
@@ -98,7 +89,6 @@ async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
     for cluster_id, data in clusters_dict.items():
         enterprises_list = data["enterprises"]
 
-        # Координаты кластера — это центр (база), полученный из заведений
         lat_sum = sum(e["coordinates"]["latitude"] for e in enterprises_list)
         lon_sum = sum(e["coordinates"]["longitude"] for e in enterprises_list)
         count = len(enterprises_list)
@@ -131,7 +121,6 @@ def distribute_enterprises_in_clusters(enterprises: List[Dict]) -> List[Dict]:
         if len(group) == 1:
             result.append(group[0])
         else:
-            # Радиус смещения точек на максимальном зуме карты
             radius = 0.00008
             center_lat = group[0]["coordinates"]["latitude"]
             center_lon = group[0]["coordinates"]["longitude"]
