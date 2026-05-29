@@ -22,6 +22,9 @@
             color: white;
             padding: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .header h1 {
@@ -32,6 +35,21 @@
         .header p {
             opacity: 0.9;
             font-size: 14px;
+        }
+
+        .btn-back {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.4);
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.3);
         }
 
         .container {
@@ -228,21 +246,23 @@
             color: #666;
         }
 
-        .mode-badge {
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 11px;
-            margin-top: 8px;
+        .btn-confirm {
+            background: #28a745;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        .btn-confirm:hover {
+            background: #218838;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🗺️ Микросервис карты ресторанов</h1>
-        <p>Демонстрация работы с кластерами и предприятиями | Яндекс.Карты + FastAPI</p>
+        <div>
+            <h1>🗺️ Микросервис карты ресторанов</h1>
+            <p>Демонстрация работы с кластерами и предприятиями | Яндекс.Карты + FastAPI</p>
+        </div>
+        <button class="btn-back" onclick="window.location.href='index.html'">↩ На главную</button>
     </div>
 
     <div class="container">
@@ -282,7 +302,7 @@
                 </div>
             </div>
 
-            <div class="card" id="selectedCard" style="display: none;">
+            <div class="card selected-info" id="selectedCard" style="display: none;">
                 <h3>✅ Выбранный объект</h3>
                 <div class="info-row">
                     <span class="info-label">Название:</span>
@@ -292,6 +312,7 @@
                     <span class="info-label" id="selectedExtraLabel">Предприятий:</span>
                     <span class="info-value" id="selectedExtra">—</span>
                 </div>
+                <button class="btn-confirm" onclick="confirmAndReturn()">👉 Выбрать объект и вернуться</button>
             </div>
 
             <div class="status" id="statusMessage">
@@ -301,7 +322,7 @@
     </div>
 
     <script>
-        const API_BASE_URL = '/api/map';
+        const API_BASE_URL = 'http://localhost:8000/api/map';
         const ENTERPRISE_ZOOM_THRESHOLD = 18;
 
         let myMap;
@@ -309,16 +330,12 @@
         let currentUserLon = null;
         let currentObjects = [];
         let currentViewType = 'clusters';
+        let currentlySelectedObject = null; // Переменная под выбранный объект
 
         const FRANCHISE_COLORS = {
             1: { color: '#FFC72C', name: 'Макдоналдс' },
             2: { color: '#E4002B', name: 'KFC' },
             3: { color: '#2A5DD5', name: 'Бургер Кинг' }
-        };
-
-        const CLUSTER_ADDRESSES = {
-            10: "Москва, ул. Арбат, 1 (ТЦ Арбат)",
-            20: "Москва, ул. Пушкинская, 5 (ТЦ Пушкинский)"
         };
 
         ymaps.ready(init);
@@ -358,26 +375,14 @@
                         `📍 ${currentUserLat.toFixed(6)}, ${currentUserLon.toFixed(6)}`;
 
                     myMap.setCenter([currentUserLat, currentUserLon], 15);
-
                     showStatus("📍 Местоположение определено! Обновление данных...", "success");
-
                     await loadMapData();
                 },
                 (error) => {
-                    let message = '';
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            message = 'Доступ к геолокации запрещён';
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            message = 'Не удалось определить местоположение';
-                            break;
-                        case error.TIMEOUT:
-                            message = 'Время ожидания истекло';
-                            break;
-                        default:
-                            message = 'Неизвестная ошибка';
-                    }
+                    let message = 'Неизвестная ошибка';
+                    if(error.code === error.PERMISSION_DENIED) message = 'Доступ к геолокации запрещён';
+                    else if(error.code === error.POSITION_UNAVAILABLE) message = 'Не удалось определить местоположение';
+                    else if(error.code === error.TIMEOUT) message = 'Время ожидания истекло';
                     showStatus(`❌ ${message}`, "error");
                 },
                 { enableHighAccuracy: true, timeout: 10000 }
@@ -409,7 +414,6 @@
                     updateMapWithEnterprises(currentObjects);
                     updateEnterprisesList(currentObjects);
                     document.getElementById('objectsCount').textContent = currentObjects.length;
-
                     showStatus(`✅ Загружено ${currentObjects.length} предприятий`, "success");
                 } else if (data.clusters) {
                     currentViewType = 'clusters';
@@ -432,7 +436,6 @@
 
         function updateClustersList(clusters) {
             const container = document.getElementById('objectsList');
-
             if (!clusters || clusters.length === 0) {
                 container.innerHTML = '<div class="empty-list">Нет кластеров</div>';
                 return;
@@ -444,18 +447,11 @@
             }
 
             container.innerHTML = sorted.map(cluster => {
-                let distanceText = '';
-                if (cluster.distance && currentUserLat !== null) {
-                    if (cluster.distance < 1000) {
-                        distanceText = `${Math.round(cluster.distance)} м`;
-                    } else {
-                        distanceText = `${(cluster.distance / 1000).toFixed(1)} км`;
-                    }
-                } else {
-                    distanceText = '—';
-                }
+                let distanceText = currentUserLat !== null && cluster.distance
+                    ? (cluster.distance < 1000 ? `${Math.round(cluster.distance)} м` : `${(cluster.distance / 1000).toFixed(1)} км`)
+                    : '—';
 
-                const address = CLUSTER_ADDRESSES[cluster.id] || `${cluster.coordinates.latitude.toFixed(5)}, ${cluster.coordinates.longitude.toFixed(5)}`;
+                const address = cluster.address || 'Адрес фудкорта';
 
                 return `
                     <div class="cluster-item" data-cluster-id="${cluster.id}" onclick="centerOnObject(${cluster.id})">
@@ -471,7 +467,6 @@
 
         function updateEnterprisesList(enterprises) {
             const container = document.getElementById('objectsList');
-
             if (!enterprises || enterprises.length === 0) {
                 container.innerHTML = '<div class="empty-list">Нет предприятий</div>';
                 return;
@@ -483,14 +478,9 @@
             }
 
             container.innerHTML = sorted.map(enterprise => {
-                let distanceText = '';
-                if (enterprise.distance && currentUserLat !== null) {
-                    if (enterprise.distance < 1000) {
-                        distanceText = `${Math.round(enterprise.distance)} м`;
-                    } else {
-                        distanceText = `${(enterprise.distance / 1000).toFixed(1)} км`;
-                    }
-                }
+                let distanceText = enterprise.distance && currentUserLat !== null
+                    ? (enterprise.distance < 1000 ? `${Math.round(enterprise.distance)} м` : `${(enterprise.distance / 1000).toFixed(1)} км`)
+                    : '';
 
                 const franchise = FRANCHISE_COLORS[enterprise.franchise_id] || { name: 'Другое' };
 
@@ -507,7 +497,6 @@
 
         function updateMapWithClusters(clusters) {
             myMap.geoObjects.removeAll();
-
             clusters.forEach(cluster => {
                 const placemark = new ymaps.Placemark(
                     [cluster.coordinates.latitude, cluster.coordinates.longitude],
@@ -518,31 +507,21 @@
                                 <hr style="margin: 8px 0;">
                                 🍔 Предприятий: <strong>${cluster.enterprise_count}</strong><br>
                                 <hr style="margin: 8px 0;">
-                                <button onclick="window.centerOnObject(${cluster.id})"
-                                        style="background: #667eea; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; width: 100%;">
-                                    📍 Центрировать
-                                </button>
+                                <button onclick="window.centerOnObject(${cluster.id})" style="width:100%">Выбрать кластер</button>
                             </div>
                         `,
-                        hintContent: `${cluster.name} (${cluster.enterprise_count} предприятий)`
+                        hintContent: `${cluster.name}`
                     },
-                    {
-                        preset: 'islands#blueCircleIcon',
-                        iconColor: '#3b82f6',
-                        iconContent: cluster.enterprise_count.toString()
-                    }
+                    { preset: 'islands#blueCircleIcon', iconColor: '#3b82f6', iconContent: cluster.enterprise_count.toString() }
                 );
-
                 myMap.geoObjects.add(placemark);
             });
         }
 
         function updateMapWithEnterprises(enterprises) {
             myMap.geoObjects.removeAll();
-
             enterprises.forEach(enterprise => {
                 const franchise = FRANCHISE_COLORS[enterprise.franchise_id] || { color: '#808080', name: 'Другое' };
-
                 const placemark = new ymaps.Placemark(
                     [enterprise.coordinates.latitude, enterprise.coordinates.longitude],
                     {
@@ -553,20 +532,13 @@
                                 <hr style="margin: 8px 0;">
                                 📍 ${enterprise.address}<br>
                                 <hr style="margin: 8px 0;">
-                                <button onclick="window.centerOnObject(${enterprise.id})"
-                                        style="background: ${franchise.color}; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; width: 100%;">
-                                    📍 Выбрать
-                                </button>
+                                <button onclick="window.centerOnObject(${enterprise.id})" style="background: ${franchise.color}; width:100%">Выбрать заведение</button>
                             </div>
                         `,
                         hintContent: `${enterprise.name}`
                     },
-                    {
-                        preset: 'islands#circleIcon',
-                        iconColor: franchise.color
-                    }
+                    { preset: 'islands#circleIcon', iconColor: franchise.color }
                 );
-
                 myMap.geoObjects.add(placemark);
             });
         }
@@ -575,48 +547,62 @@
             const object = currentObjects.find(obj => obj.id === objectId);
             if (!object) return;
 
+            // КРИТИЧЕСКИЙ ФИКС: Запоминаем тип объекта в момент клика,
+            // чтобы зум карты в дальнейшем не ломал логику сохранения
+            object.dataType = currentViewType;
+
+            currentlySelectedObject = object; // Запоминаем выбранный элемент
+
             myMap.setCenter([object.coordinates.latitude, object.coordinates.longitude], 18);
 
+            document.getElementById('selectedCard').style.display = 'block';
+            document.getElementById('selectedName').textContent = object.name;
+
             if (currentViewType === 'clusters') {
-                document.getElementById('selectedCard').style.display = 'block';
-                document.getElementById('selectedName').textContent = object.name;
                 document.getElementById('selectedExtraLabel').textContent = 'Предприятий:';
                 document.getElementById('selectedExtra').textContent = object.enterprise_count;
-
-                document.querySelectorAll('.cluster-item').forEach(item => {
-                    item.style.background = '';
-                });
-                const selectedItem = document.querySelector(`.cluster-item[data-cluster-id="${objectId}"]`);
-                if (selectedItem) selectedItem.style.background = '#e8f5e9';
-
-                showStatus(`📍 Центрировано на кластере: ${object.name}`, "success");
+                showStatus(`📍 Локация: кластер ${object.name}`, "success");
             } else {
-                document.getElementById('selectedCard').style.display = 'block';
-                document.getElementById('selectedName').textContent = object.name;
                 document.getElementById('selectedExtraLabel').textContent = 'Франшиза:';
                 const franchise = FRANCHISE_COLORS[object.franchise_id] || { name: 'Другое' };
                 document.getElementById('selectedExtra').textContent = franchise.name;
-
-                document.querySelectorAll('.enterprise-item').forEach(item => {
-                    item.style.background = '';
-                });
-                const selectedItem = document.querySelector(`.enterprise-item[data-enterprise-id="${objectId}"]`);
-                if (selectedItem) selectedItem.style.background = '#e8f5e9';
-
-                showStatus(`📍 Центрировано на: ${object.name}`, "success");
+                showStatus(`📍 Локация: заведение ${object.name}`, "success");
             }
-            setTimeout(() => {
-                if (currentViewType === 'clusters') {
-                    document.querySelectorAll('.cluster-item').forEach(item => {
-                        item.style.background = '';
-                    });
-                } else {
-                    document.querySelectorAll('.enterprise-item').forEach(item => {
-                        item.style.background = '';
-                    });
-                }
-            }, 2000);
         }
+
+        // Запись в кэш и возврат на index.html
+        // Запись параметров сессии в кэш и возврат на главную
+        function confirmAndReturn() {
+            if (!currentlySelectedObject) return;
+
+            // Теперь проверяем НЕ зум карты, а сохраненный тип самого объекта dataType
+            if (currentlySelectedObject.dataType === 'clusters') {
+                // Сценарий А: Пользователь зафиксировал КЛАСТЕР целиком
+                localStorage.setItem('selectedClusterId', currentlySelectedObject.id);
+                localStorage.setItem('selectedClusterName', currentlySelectedObject.name);
+                localStorage.setItem('selectedObjectAddress', currentlySelectedObject.address || 'Адрес фудкорта');
+
+                // Очищаем франшизу, так как выбран весь хаб
+                localStorage.removeItem('selectedFranchiseId');
+                localStorage.removeItem('selectedFranchiseName');
+            } else if (currentlySelectedObject.dataType === 'enterprises') {
+                // Сценарий Б: Пользователь зафиксировал КОНКРЕТНОЕ предприятие (франшизу)
+                localStorage.setItem('selectedClusterId', currentlySelectedObject.cluster_id); // ID родительского кластера
+                localStorage.removeItem('selectedClusterName'); // Имя кластера убираем, так как важна франшиза
+                localStorage.setItem('selectedObjectAddress', currentlySelectedObject.address);
+
+                // Сохраняем ID франшизы для бэкенда
+                localStorage.setItem('selectedFranchiseId', currentlySelectedObject.franchise_id);
+
+                // Сохраняем имя исключительно для красоты отображения на фронте
+                const franchiseInfo = FRANCHISE_COLORS[currentlySelectedObject.franchise_id] || { name: 'Другое' };
+                localStorage.setItem('selectedFranchiseName', currentlySelectedObject.franchise_name || franchiseInfo.name);
+            }
+
+            // Безопасный редирект обратно
+            window.location.href = 'index.html';
+        }
+
         function showStatus(message, type = 'info') {
             const statusDiv = document.getElementById('statusMessage');
             statusDiv.textContent = message;
@@ -637,10 +623,7 @@
         function debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
-                const later = () => {
-                    clearTimeout(timeout);
-                    func(...args);
-                };
+                const later = () => { clearTimeout(timeout); func(...args); };
                 clearTimeout(timeout);
                 timeout = setTimeout(later, wait);
             };

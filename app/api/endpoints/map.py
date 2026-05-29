@@ -102,20 +102,24 @@ async def get_map_data(
 async def select_enterprise(
         request: SelectRequest,
 ):
-    enterprise = enterprise_service.get_enterprise_by_id(request.enterprise_id)
+    # Не забываем про await, который мы исправили!
+    enterprise = await enterprise_service.get_enterprise_by_id(request.enterprise_id)
 
     if not enterprise:
         raise HTTPException(status_code=404, detail="Предприятие не найдено")
 
+    # Возвращаем фронтенду ID и адрес КЛАСТЕРА, а не ресторана, как вы и просили
     return SelectResponse(
         enterprise_id=enterprise["id"],
         cluster_id=enterprise["cluster_id"],
         enterprise_name=enterprise["name"],
         franchise_id=enterprise["franchise_id"],
-        address=enterprise["address"],
-        coordinates=Coordinates(**enterprise["coordinates"])
+        address=enterprise["cluster_address"],  # <--- Адрес КЛАСТЕРА
+        coordinates=Coordinates(
+            latitude=enterprise["cluster_latitude"],   # <--- Координаты ЦЕНТРА КЛАСТЕРА
+            longitude=enterprise["cluster_longitude"]
+        )
     )
-
 
 @router.post("/geocode", response_model=GeocodeResponse)
 async def geocode_address_endpoint(

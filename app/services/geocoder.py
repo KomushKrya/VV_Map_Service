@@ -5,7 +5,7 @@ from app.config import get_settings
 settings = get_settings()
 
 async def geocode_address(address: str) -> Tuple[float, float, str]:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         try:
             response = await client.get(
                 "https://geocode-maps.yandex.ru/1.x/",

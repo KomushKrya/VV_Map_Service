@@ -1,46 +1,72 @@
+# app/services/enterprise.py
 from typing import List, Dict, Optional
-from app.services.geocoder import geocode_address
-from app.services.mock_gateway import get_enterprises_from_gateway
 import math
 from collections import defaultdict
 
-_coordinates_cache = {}
+from app.services.geocoder import geocode_address
+from app.services.gateway_service import get_map_data_from_gateway, save_cluster_coordinates_to_gateway
+
 
 async def get_all_enterprises(with_coordinates: bool = True) -> List[Dict]:
-    enterprises = await get_enterprises_from_gateway()
+    """
+    Запрашивает данные из БД, при необходимости геокодирует координаты КЛАСТЕРА
+    и трансформирует данные в формат предприятий для карты.
+    """
+    raw_data = await get_map_data_from_gateway()
+    enterprises = []
 
-    if not with_coordinates:
-        return enterprises
+    # Локальный кэш для предотвращения повторного геокодирования одного и того же кластера
+    # в рамках одного тяжелого запроса
+    geocoded_clusters_cache = {}
 
-    for enterprise in enterprises:
-        coords = await _get_or_geocode_coordinates(
-            enterprise["id"],
-            enterprise["address"]
-        )
-        if coords:
-            enterprise["coordinates"] = {
-                "latitude": coords[0],
-                "longitude": coords[1]
-            }
-        else:
-            enterprise["coordinates"] = None
+    for item in raw_data:
+        cluster_id = item["cluster_id"]
+        lat = item.get("cluster_latitude")
+        lon = item.get("cluster_longitude")
 
-    return [e for e in enterprises if e.get("coordinates")]
+        # 1. Если координат в БД нет, проверяем кэш или геокодируем
+        if lat is None or lon is None:
+            if cluster_id in geocoded_clusters_cache:
+                lat, lon = geocoded_clusters_cache[cluster_id]
+            else:
+                try:
+                    # Геокодируем по адресу кластера
+                    geo_lat, geo_lon, _ = await geocode_address(item["cluster_address"])
+                    if geo_lat is not None:
+                        print(f"!!! ГЕОКОДЕР СРАБОТАЛ для кластера {item['cluster_name']} -> {geo_lat}, {geo_lon}")
 
+                        # Сохраняем в центральную БД через новый POST-эндпоинт
+                        await save_cluster_coordinates_to_gateway(cluster_id, geo_lat, geo_lon)
 
-async def _get_or_geocode_coordinates(enterprise_id: int, address: str) -> Optional[tuple]:
-    if enterprise_id in _coordinates_cache:
-        return _coordinates_cache[enterprise_id]
+                        # Запоминаем в кэш текущего цикла
+                        geocoded_clusters_cache[cluster_id] = (geo_lat, geo_lon)
+                        lat, lon = geo_lat, geo_lon
+                except Exception as e:
+                    print(f"Ошибка геокодирования для кластера {cluster_id}: {e}")
+                    lat, lon = None, None
 
-    try:
-        lat, lon, precision = await geocode_address(address)
-        if lat is not None:
-            _coordinates_cache[enterprise_id] = (lat, lon)
-            return (lat, lon)
-    except Exception as e:
-        print(f"Ошибка геокодирования {address}: {e}")
+        # Если координаты получить так и не удалось, а они обязательны — пропускаем заведение
+        if with_coordinates and (lat is None or lon is None):
+            continue
 
-    return None
+        # 2. Маппинг под старую схему, чтобы фронтенд и карта не сломались
+        enterprise = {
+            "id": item["id"],
+            # Формируем красивое название заведения, например: "ROSTIC'S ТЦ Иридиум"
+            "name": f"{item['franchise_name']} {item['cluster_name']}",
+            "franchise_id": item["franchise_id"],
+            "franchise_name": item["franchise_name"],
+            "cluster_id": cluster_id,
+            "cluster_name": item["cluster_name"],
+            "address": item["cluster_address"],
+            "coordinates": {
+                "latitude": lat,
+                "longitude": lon
+            } if lat and lon else None
+        }
+        enterprises.append(enterprise)
+
+    return enterprises
 
 
 async def get_enterprise_by_id(enterprise_id: int) -> Optional[Dict]:
@@ -52,6 +78,9 @@ async def get_enterprise_by_id(enterprise_id: int) -> Optional[Dict]:
 
 
 async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
+    """
+    Группирует переданные заведения обратно в уникальные кластеры для отображения на карте.
+    """
     clusters_dict = {}
 
     for e in enterprises:
@@ -59,7 +88,8 @@ async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
         if cluster_id not in clusters_dict:
             clusters_dict[cluster_id] = {
                 "id": cluster_id,
-                "name": f"Фудкорт {cluster_id}",
+                "name": e.get("cluster_name", f"Фудкорт {cluster_id}"),
+                "address": e["address"],
                 "enterprises": []
             }
         clusters_dict[cluster_id]["enterprises"].append(e)
@@ -67,6 +97,8 @@ async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
     clusters = []
     for cluster_id, data in clusters_dict.items():
         enterprises_list = data["enterprises"]
+
+        # Координаты кластера — это центр (база), полученный из заведений
         lat_sum = sum(e["coordinates"]["latitude"] for e in enterprises_list)
         lon_sum = sum(e["coordinates"]["longitude"] for e in enterprises_list)
         count = len(enterprises_list)
@@ -74,6 +106,7 @@ async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
         clusters.append({
             "id": cluster_id,
             "name": data["name"],
+            "address": data["address"],
             "coordinates": {
                 "latitude": lat_sum / count,
                 "longitude": lon_sum / count
@@ -85,6 +118,9 @@ async def get_clusters_from_enterprises(enterprises: List[Dict]) -> List[Dict]:
 
 
 def distribute_enterprises_in_clusters(enterprises: List[Dict]) -> List[Dict]:
+    """
+    Разносит заведения в одном кластере по кругу, чтобы маркеры на карте не слипались.
+    """
     cluster_groups = defaultdict(list)
     for enterprise in enterprises:
         cluster_id = enterprise["cluster_id"]
@@ -95,6 +131,7 @@ def distribute_enterprises_in_clusters(enterprises: List[Dict]) -> List[Dict]:
         if len(group) == 1:
             result.append(group[0])
         else:
+            # Радиус смещения точек на максимальном зуме карты
             radius = 0.00008
             center_lat = group[0]["coordinates"]["latitude"]
             center_lon = group[0]["coordinates"]["longitude"]

@@ -18,6 +18,7 @@ class Enterprise(BaseModel):
 class Cluster(BaseModel):
     id: int
     name: str
+    address: Optional[str] = None
     coordinates: Coordinates
     enterprise_count: int
     distance: Optional[float] = None

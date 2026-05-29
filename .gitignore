@@ -1,4 +1,6 @@
-
+.idea/
+.idea
+.idea/*
 .venv/
 venv/
 env/
@@ -11,7 +13,5 @@ __pycache__/
 
 *.log
 *.tmp
-
-.idea/
 
 *.pid
