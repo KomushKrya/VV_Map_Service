@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главная - Профиль Локации</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        .header-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 25px;
+            font-size: 24px;
+        }
+
+        .info-block {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .info-row {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .empty-text {
+            color: #aeaeae;
+            font-style: italic;
+        }
+
+        .btn-map {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            transition: all 0.3s;
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-map:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-clear {
+            background: none;
+            border: none;
+            color: #ef5350;
+            font-size: 13px;
+            margin-top: 15px;
+            cursor: pointer;
+            text-decoration: underline;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1 class="header-gradient">🎯 Выбранная локация</h1>
+
+        <div class="info-block">
+            <div class="info-row">
+                <span class="label">ID Кластера / Объект:</span>
+                <span id="clusterValue" class="value empty-text">Не выбран</span>
+            </div>
+
+            <div class="info-row">
+                <span class="label">Адрес локации:</span>
+                <span id="addressValue" class="value empty-text">Адрес отсутствует</span>
+            </div>
+
+            <div class="info-row">
+                <span class="label">Ваша франшиза:</span>
+                <span id="franchiseValue" class="value empty-text">Любая (выбран весь кластер)</span>
+            </div>
+        </div>
+
+        <button class="btn-map" onclick="window.location.href='demo.html'">🗺️ Открыть карту</button>
+        <button id="clearBtn" class="btn-clear" onclick="clearSelection()">Сбросить выбор</button>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const clusterId = localStorage.getItem('selectedClusterId');
+            const clusterName = localStorage.getItem('selectedClusterName');
+            const savedAddress = localStorage.getItem('selectedObjectAddress');
+            const franchiseId = localStorage.getItem('selectedFranchiseId');
+            const franchiseName = localStorage.getItem('selectedFranchiseName');
+
+            let hasData = false;
+
+            // 1. Отображение Кластера
+            if (clusterId) {
+                const clusterEl = document.getElementById('clusterValue');
+                // Если сохранили имя (выбор кластера целиком), пишем имя + ID. Иначе просто ID
+                clusterEl.textContent = clusterName ? `${clusterName} (ID: ${clusterId})` : `ID: ${clusterId}`;
+                clusterEl.classList.remove('empty-text');
+                hasData = true;
+            }
+
+            // 2. Отображение Адреса
+            if (savedAddress) {
+                const addressEl = document.getElementById('addressValue');
+                addressEl.textContent = savedAddress;
+                addressEl.classList.remove('empty-text');
+                hasData = true;
+            }
+
+            // 3. Отображение Франшизы
+            if (franchiseId) {
+                const franchiseEl = document.getElementById('franchiseValue');
+                // Выводим Название и ID в скобках для наглядности
+                franchiseEl.textContent = franchiseName ? `${franchiseName} (ID: ${franchiseId})` : `ID: ${franchiseId}`;
+                franchiseEl.classList.remove('empty-text');
+                hasData = true;
+            }
+
+            if (hasData) {
+                document.getElementById('clearBtn').style.display = 'inline-block';
+            }
+        });
+
+        function clearSelection() {
+            localStorage.removeItem('selectedClusterId');
+            localStorage.removeItem('selectedClusterName');
+            localStorage.removeItem('selectedObjectAddress');
+            localStorage.removeItem('selectedFranchiseId');
+            localStorage.removeItem('selectedFranchiseName');
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>
